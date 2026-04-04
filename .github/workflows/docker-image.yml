@@ -1,0 +1,151 @@
+name: Kubernetes CI DevOps
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+
+  # 🧪 1. COMPILE / BUILD CHECK
+  compile:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: |
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+
+      - name: Syntax Check (Compile)
+        run: |
+          python -m py_compile $(find . -name "*.py") || exit 1
+
+
+  # 🔍 2. GITLEAKS SCAN
+  gitleaks-scan:
+    runs-on: ubuntu-latest
+    needs: compile
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Run Gitleaks Scan
+        uses: gitleaks/gitleaks-action@v2
+        with:
+          args: detect --source . --verbose
+        continue-on-error: false
+
+
+  # 🔍 3. TRIVY FILESYSTEM SCAN
+  trivy-fs-scan:
+    runs-on: ubuntu-latest
+    needs: gitleaks-scan
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy FS Scan
+        uses: aquasecurity/trivy-action@v0.20.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: table
+          severity: CRITICAL,HIGH
+          exit-code: 1
+
+
+  # 🐳 4. BUILD & PUSH DOCKER IMAGE
+  docker-build-push:
+    runs-on: ubuntu-latest
+    needs: trivy-fs-scan
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set SHORT SHA
+        run: echo "SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_ENV
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ashis1099/gha-pyapp:${{ env.SHORT_SHA }}
+
+
+  # 🔐 5. TRIVY IMAGE SCAN
+  trivy-image-scan:
+    runs-on: ubuntu-latest
+    needs: docker-build-push
+
+    steps:
+      - name: Set SHORT SHA
+        run: echo "SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_ENV
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Verify Image Exists
+        run: docker pull ashis1099/gha-pyapp:${{ env.SHORT_SHA }}
+
+      - name: Run Trivy Image Scan
+        uses: aquasecurity/trivy-action@v0.20.0
+        with:
+          image-ref: ashis1099/gha-pyapp:${{ env.SHORT_SHA }}
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: 1
+
+
+  # 🛠️ 6. UPDATE K8s MANIFEST
+  update-manifest:
+    runs-on: ubuntu-latest
+    needs: trivy-image-scan
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set SHORT SHA
+        run: echo "SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_ENV
+
+      - name: Install yq
+        uses: mikefarah/yq@v4.44.3
+
+      - name: Update Kubernetes Manifest
+        run: |
+          yq -i '.spec.template.spec.containers[0].image = "ashis1099/gha-pyapp:${{ env.SHORT_SHA }}"' ./k8s/pyapp-deployment.yml
+
+      - name: Commit and Push Changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions@noreply.github.com"
+          git add k8s/pyapp-deployment.yml
+          git commit -m "Updated image tag to ${{ env.SHORT_SHA }}" || echo "No changes"
+          git push origin main
