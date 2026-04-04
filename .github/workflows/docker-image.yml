@@ -92,7 +92,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: ashis1099/gha-pyapp:${{ env.SHORT_SHA }}
+          tags: umasankardock/gha-pyapp:${{ env.SHORT_SHA }}
 
 
   # 🔐 5. TRIVY IMAGE SCAN
@@ -111,12 +111,12 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Verify Image Exists
-        run: docker pull ashis1099/gha-pyapp:${{ env.SHORT_SHA }}
+        run: docker pull umasankardock/gha-pyapp:${{ env.SHORT_SHA }}
 
       - name: Run Trivy Image Scan
         uses: aquasecurity/trivy-action@v0.20.0
         with:
-          image-ref: ashis1099/gha-pyapp:${{ env.SHORT_SHA }}
+          image-ref: umasankardock/gha-pyapp:${{ env.SHORT_SHA }}
           format: table
           severity: CRITICAL,HIGH
           ignore-unfixed: true
@@ -140,7 +140,7 @@ jobs:
 
       - name: Update Kubernetes Manifest
         run: |
-          yq -i '.spec.template.spec.containers[0].image = "ashis1099/gha-pyapp:${{ env.SHORT_SHA }}"' ./k8s/pyapp-deployment.yml
+          yq -i '.spec.template.spec.containers[0].image = "umasankardock/gha-pyapp:${{ env.SHORT_SHA }}"' ./k8s/pyapp-deployment.yml
 
       - name: Commit and Push Changes
         run: |
