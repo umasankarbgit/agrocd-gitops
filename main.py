@@ -7,10 +7,9 @@ def create_app():
 
     @app.get("/")
     def index():
-        # Safe environment variable usage (no secrets hardcoded)
         message = os.getenv(
             "MESSAGE",
-            "Hello from Argocd running on Kubernetes  🚀"
+            "Hello from ArgoCD running on Kubernetes 🚀"
         )
 
         return f"""
@@ -32,6 +31,5 @@ def create_app():
 app = create_app()
 
 if __name__ == "__main__":
-    # No debug mode (important for security scan)
     port = int(os.getenv("PORT", "8000"))
     app.run(host="0.0.0.0", port=port)
