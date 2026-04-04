@@ -16,6 +16,6 @@ spec:
     spec:
       containers:
         - name: pyapp
-          image: umasankardock/gha-pyapp:8c01316
+          image: umasankardock/gha-pyapp:b236b5d
           ports:
             - containerPort: 8000
