@@ -1,29 +1,13 @@
-# 1. Build stage
-FROM python:3.12-slim AS builder
+FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install only required packages
 COPY requirements.txt .
-RUN pip install --upgrade pip && \
-    pip install --no-cache-dir --prefix=/install -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy app
 COPY . .
-
-
-# 2. Final stage (DISTROLESS)
-FROM gcr.io/distroless/python3-debian12
-
-WORKDIR /app
-
-# Copy installed dependencies
-COPY --from=builder /install /usr/local
-COPY --from=builder /app /app
-
-# Non-root user (VERY IMPORTANT)
-USER nonroot:nonroot
 
 EXPOSE 8000
 
-CMD ["main.py"]
+# ✅ VERY IMPORTANT (main:app)
+CMD ["gunicorn", "-w", "2", "-b", "0.0.0.0:8000", "main:app"]
